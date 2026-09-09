@@ -8,9 +8,10 @@ export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const isOrganization = user?.role === 'organization';
-  const isGovernment = user?.role === 'government';
-  const isCitizen = !isOrganization && !isGovernment;
+  const role = user?.role || 'citizen';
+  const isOrganization = role === 'organization';
+  const isGovernment = role === 'government';
+  const isCitizen = role === 'citizen' || !user;
 
   const handleLogout = () => {
     logout();
@@ -33,41 +34,62 @@ export default function Navbar() {
           </div>
         </Link>
 
-        {/* NAVIGATION LINKS */}
+        {/* RESPONSIVE ROUTED NAVIGATION LINKS */}
         <nav style={{ display: 'flex', gap: '1.8rem', alignItems: 'center', fontWeight: 600, fontSize: '0.9rem' }}>
           <Link to="/" style={{ color: location.pathname === '/' ? '#E03E1A' : '#0C2619', textDecoration: 'none' }}>
             Home
           </Link>
-          <Link to="/post-problem" style={{ color: location.pathname === '/post-problem' ? '#E03E1A' : '#0C2619', textDecoration: 'none' }}>
-            Report
-          </Link>
-          <Link to="/explore" style={{ color: location.pathname === '/explore' ? '#E03E1A' : '#0C2619', textDecoration: 'none' }}>
-            Explore
-          </Link>
 
-          {!isCitizen && (
+          {/* CITIZEN OPTIONS */}
+          {isCitizen && (
             <>
-              <Link to="/organization" style={{ color: location.pathname === '/organization' ? '#E03E1A' : '#0C2619', textDecoration: 'none' }}>
-                Dashboard
+              <Link to="/post-problem" style={{ color: location.pathname === '/post-problem' ? '#E03E1A' : '#0C2619', textDecoration: 'none' }}>
+                Report
               </Link>
-              <Link to="/track" style={{ color: location.pathname === '/track' ? '#E03E1A' : '#0C2619', textDecoration: 'none' }}>
+              <Link to="/explore" style={{ color: location.pathname === '/explore' ? '#E03E1A' : '#0C2619', textDecoration: 'none' }}>
+                Explore
+              </Link>
+            </>
+          )}
+
+          {/* ORGANIZATION OPTIONS */}
+          {isOrganization && (
+            <>
+              <Link to="/explore" style={{ color: location.pathname === '/explore' ? '#E03E1A' : '#0C2619', textDecoration: 'none' }}>
+                Explore
+              </Link>
+              <Link to="/collaborate" style={{ color: location.pathname === '/collaborate' ? '#E03E1A' : '#0C2619', textDecoration: 'none' }}>
+                Collaborate
+              </Link>
+              <Link to="/organization" style={{ color: location.pathname === '/organization' ? '#E03E1A' : '#0C2619', textDecoration: 'none' }}>
+                Track
+              </Link>
+            </>
+          )}
+
+          {/* GOVERNMENT OPTIONS */}
+          {isGovernment && (
+            <>
+              <Link to="/explore" style={{ color: location.pathname === '/explore' ? '#E03E1A' : '#0C2619', textDecoration: 'none' }}>
+                Explore
+              </Link>
+              <Link to="/government" style={{ color: location.pathname === '/government' ? '#E03E1A' : '#0C2619', textDecoration: 'none' }}>
                 Track
               </Link>
             </>
           )}
         </nav>
 
-        {/* ACCOUNT STATUS & LOGIN / LOGOUT BUTTONS */}
+        {/* USER PROFILE & LOGOUT */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
           <div style={{ background: '#FAF8F5', border: '1px solid #E6E1D5', borderRadius: 20, padding: '0.3rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <User size={16} color="#0C2619" />
             <span style={{ fontSize: '0.8rem', fontWeight: 700 }}>{user?.email ? user.email.split('@')[0] : 'Guest'}</span>
             <span style={{ background: isOrganization ? '#FEF3C7' : isGovernment ? '#DCFCE7' : '#E0F2FE', color: isOrganization ? '#D97706' : isGovernment ? '#15803D' : '#0369A1', fontSize: '0.65rem', fontWeight: 800, padding: '0.15rem 0.4rem', borderRadius: 10, textTransform: 'uppercase' }}>
-              {isOrganization ? 'ORGANIZATION' : isGovernment ? 'GOVERNMENT' : 'CITIZEN'}
+              {role.toUpperCase()}
             </span>
           </div>
 
-          {/* ALWAYS ACCESSIBLE LOGIN / SWITCH ROLE BUTTON */}
           <Link to="/login" className="btn" style={{ background: '#0C2619', color: 'white', fontSize: '0.78rem', padding: '0.4rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem', textDecoration: 'none' }}>
             <LogIn size={14} /> Switch / Sign In
           </Link>

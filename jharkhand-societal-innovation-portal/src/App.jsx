@@ -1,42 +1,51 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
-import Footer from './components/Footer';
 import ChatBot from './components/ChatBot';
 import Home from './pages/Home';
-import Explore from './pages/Explore';
 import PostProblem from './pages/PostProblem';
+import Explore from './pages/Explore';
 import TrackProblem from './pages/TrackProblem';
+import OrganizationDashboard from './pages/OrganizationDashboard';
+import GovernmentDashboard from './pages/GovernmentDashboard';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import OrganizationDashboard from './pages/OrganizationDashboard';
-import SolutionTracker from './pages/SolutionTracker';
-import GovernmentDashboard from './pages/GovernmentDashboard';
+import { AuthProvider } from './context/AuthContext';
 
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <div className="app-container">
+      <Router>
+        <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#FDFBF7' }}>
           <Navbar />
-          <main className="main-content">
+          
+          <main style={{ flex: 1, padding: '2rem 1.5rem', maxWidth: 1200, margin: '0 auto', width: '100%' }}>
             <Routes>
+              {/* Common Routes */}
               <Route path="/" element={<Home />} />
-              <Route path="/explore" element={<Explore />} />
-              <Route path="/post-problem" element={<PostProblem />} />
-              <Route path="/track" element={<TrackProblem />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/explore" element={<Explore />} />
+
+              {/* Citizen Routes */}
+              <Route path="/post-problem" element={<PostProblem />} />
+
+              {/* Organization & Collaborate Routes */}
               <Route path="/organization" element={<OrganizationDashboard />} />
-              <Route path="/solution-tracker" element={<SolutionTracker />} />
+              <Route path="/collaborate" element={<OrganizationDashboard />} />
+
+              {/* Track & Government Routes */}
+              <Route path="/track" element={<TrackProblem />} />
               <Route path="/government" element={<GovernmentDashboard />} />
+
+              {/* Fallback Catch-all */}
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>
-          <Footer />
+
           <ChatBot />
         </div>
-      </BrowserRouter>
+      </Router>
     </AuthProvider>
   );
 }
