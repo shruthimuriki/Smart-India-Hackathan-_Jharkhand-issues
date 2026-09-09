@@ -1,18 +1,89 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { generateProblemId, classifyProblem, checkSimilarProblems } from '../lib/categorization';
-import { AlertTriangle, Upload, CheckCircle } from 'lucide-react';
+import { AlertTriangle, Upload, CheckCircle, Mic, MicOff, Languages } from 'lucide-react';
 
 const DISTRICTS = ['Ranchi', 'Dhanbad', 'Jamshedpur', 'Hazaribagh', 'Bokaro', 'Deoghar', 'Giridih', 'Ramgarh'];
 
 export default function PostProblem() {
   const navigate = useNavigate();
-  const [formData, setFormData] = useState({ title: '', description: '', district: 'Ranchi', locationText: '', posterName: '', posterContact: '' });
+  const [formData, setFormData] = useState({ 
+    title: '', 
+    description: '', 
+    district: 'Ranchi', 
+    locationText: '', 
+    posterName: '', 
+    posterContact: '' 
+  });
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [similarProb, setSimilarProb] = useState(null);
+
+  // VOICE INPUT STATES
+  const [isListening, setIsListening] = useState(false);
+  const [speechLanguage, setSpeechLanguage] = useState('hi-IN'); // Hindi default
+  const [activeVoiceTarget, setActiveVoiceTarget] = useState('description'); // 'title' or 'description'
+  const [translating, setTranslating] = useState(false);
+
+  // TRANSLATE TEXT TO ENGLISH (Free MyMemory Translation API)
+  const translateToEnglish = async (text, sourceLang) => {
+    if (!text || sourceLang.startsWith('en')) return text;
+    setTranslating(true);
+    try {
+      const langPair = `${sourceLang.split('-')[0]}|en`;
+      const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${langPair}`);
+      const data = await res.json();
+      setTranslating(false);
+      return data?.responseData?.translatedText || text;
+    } catch (err) {
+      console.error('Translation error:', err);
+      setTranslating(false);
+      return text;
+    }
+  };
+
+  // SPEECH RECOGNITION HANDLER
+  const startSpeechRecognition = (targetField) => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert('Speech recognition is not supported in this browser. Please use Google Chrome or MS Edge.');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = speechLanguage;
+    recognition.interimResults = false;
+
+    setActiveVoiceTarget(targetField);
+    setIsListening(true);
+
+    recognition.start();
+
+    recognition.onresult = async (event) => {
+      const spokenTranscript = event.results[0][0].transcript;
+      setIsListening(false);
+
+      // Convert Hindi/Regional speech into English text
+      const translatedEnglishText = await translateToEnglish(spokenTranscript, speechLanguage);
+
+      setFormData(prev => ({
+        ...prev,
+        [targetField]: prev[targetField] ? `${prev[targetField]} ${translatedEnglishText}` : translatedEnglishText
+      }));
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech error:', event.error);
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+  };
 
   const handleFileChange = (e) => {
     setFiles(Array.from(e.target.files));
@@ -97,7 +168,27 @@ export default function PostProblem() {
     <div style={{ maxWidth: 750, margin: '0 auto' }}>
       <div className="card">
         <h2>Report a Community Issue</h2>
-        <p style={{ color: '#6B675E', fontSize: '0.85rem', marginBottom: '1.5rem' }}>Submit problem details. PALASH will auto-assign the issue to the relevant institution.</p>
+        <p style={{ color: '#6B675E', fontSize: '0.85rem', marginBottom: '1.2rem' }}>
+          Submit problem details. PALASH will auto-assign the issue to the relevant institution.
+        </p>
+
+        {/* VOICE INPUT SELECTOR CONTROL */}
+        <div style={{ background: '#FAF8F5', border: '1px solid #E6E1D5', borderRadius: 8, padding: '0.8rem 1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', fontWeight: 700, color: '#0C2619' }}>
+            <Languages size={18} color="#E03E1A" />
+            <span>Voice Input Language:</span>
+          </div>
+          <select 
+            className="form-control" 
+            style={{ width: 'auto', padding: '0.3rem 0.6rem', fontSize: '0.85rem' }} 
+            value={speechLanguage} 
+            onChange={(e) => setSpeechLanguage(e.target.value)}
+          >
+            <option value="hi-IN">Hindi (हिंदी)</option>
+            <option value="bn-IN">Bengali (বাংলা)</option>
+            <option value="en-IN">English (India)</option>
+          </select>
+        </div>
 
         {error && <div className="alert alert-danger">{error}</div>}
 
@@ -106,19 +197,57 @@ export default function PostProblem() {
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontWeight: 700 }}>
               <AlertTriangle size={18}/> SIMILAR ISSUE ALREADY REPORTED!
             </div>
-            <p style={{ marginTop: '0.4rem', fontSize: '0.85rem' }}>Matching Issue ID: <strong>{similarProb.problem_id}</strong> ({similarProb.title}).</p>
+            <p style={{ marginTop: '0.4rem', fontSize: '0.85rem' }}>
+              Matching Issue ID: <strong>{similarProb.problem_id}</strong> ({similarProb.title}).
+            </p>
           </div>
         )}
 
         <form onSubmit={handleSubmit}>
+          {/* PROBLEM TITLE WITH VOICE BUTTON */}
           <div className="form-group">
-            <label>Problem Title *</label>
-            <input className="form-control" required value={formData.title} onChange={e => setFormData({ ...formData, title: e.target.value })} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+              <label style={{ margin: 0 }}>Problem Title *</label>
+              <button 
+                type="button" 
+                onClick={() => startSpeechRecognition('title')}
+                style={{ background: isListening && activeVoiceTarget === 'title' ? '#DC2626' : '#0C2619', color: 'white', border: 'none', padding: '0.3rem 0.7rem', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}
+              >
+                {isListening && activeVoiceTarget === 'title' ? <MicOff size={14} /> : <Mic size={14} />}
+                {isListening && activeVoiceTarget === 'title' ? 'Listening...' : 'Speak Title'}
+              </button>
+            </div>
+            <input 
+              className="form-control" 
+              required 
+              value={formData.title} 
+              onChange={e => setFormData({ ...formData, title: e.target.value })} 
+              placeholder="e.g. Broken handpump in village"
+            />
           </div>
 
+          {/* PROBLEM DESCRIPTION WITH VOICE BUTTON */}
           <div className="form-group">
-            <label>Detailed Description *</label>
-            <textarea className="form-control" rows={4} required value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+              <label style={{ margin: 0 }}>Detailed Description *</label>
+              <button 
+                type="button" 
+                onClick={() => startSpeechRecognition('description')}
+                style={{ background: isListening && activeVoiceTarget === 'description' ? '#DC2626' : '#0C2619', color: 'white', border: 'none', padding: '0.3rem 0.7rem', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}
+              >
+                {isListening && activeVoiceTarget === 'description' ? <MicOff size={14} /> : <Mic size={14} />}
+                {isListening && activeVoiceTarget === 'description' ? 'Listening...' : 'Speak Description'}
+              </button>
+            </div>
+            <textarea 
+              className="form-control" 
+              rows={4} 
+              required 
+              value={formData.description} 
+              onChange={e => setFormData({ ...formData, description: e.target.value })} 
+              placeholder="Provide complete details..."
+            />
+            {translating && <p style={{ fontSize: '0.75rem', color: '#E03E1A', marginTop: '0.3rem', fontWeight: 600 }}>Translating spoken speech to English...</p>}
           </div>
 
           <div className="grid-2">
@@ -164,7 +293,7 @@ export default function PostProblem() {
             </div>
           </div>
 
-          <button type="submit" className="btn btn-orange" style={{ width: '100%', justifyContent: 'center', marginTop: '1rem' }} disabled={loading}>
+          <button type="submit" className="btn btn-orange" style={{ width: '100%', justifyContent: 'center', marginTop: '1rem' }} disabled={loading || translating}>
             {loading ? 'Submitting...' : 'SUBMIT PROBLEM'}
           </button>
         </form>
