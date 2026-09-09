@@ -52,7 +52,8 @@ export async function processProblemSubmission(formData) {
       .from('problems')
       .update({
         duplicate_count: newCount,
-        severity_score: newSeverity
+        severity_score: newSeverity,
+        status: 'assigned' // Ensure duplicate reflects assigned status
       })
       .eq('id', duplicate.id);
 
@@ -63,6 +64,13 @@ export async function processProblemSubmission(formData) {
   const randomNum = Math.floor(1000 + Math.random() * 9000);
   const generatedId = `JH-${domainCode}-${randomNum}`;
 
+  // Find available organization for direct assignment
+  const { data: matchedOrgs } = await supabase.from('organizations').select('*');
+  const targetOrg = matchedOrgs && matchedOrgs.length > 0 ? matchedOrgs[0] : null;
+
+  // Insert problem with status 'assigned' directly if an org exists, else 'assigned'
+  const initialStatus = targetOrg ? 'assigned' : 'assigned';
+
   const { data: newProb, error: insertError } = await supabase.from('problems').insert({
     problem_id: generatedId,
     title: formData.title,
@@ -70,27 +78,33 @@ export async function processProblemSubmission(formData) {
     domain: classification.domain,
     ai_confidence: classification.confidence,
     matched_keywords: classification.matchedKeywords,
-    status: 'available',
+    status: initialStatus,
     district: formData.district || 'Ranchi',
     location_text: formData.locationText || 'General Location',
     poster_name: formData.posterName || 'Anonymous Citizen',
     poster_contact: formData.posterContact || 'Not Provided',
     duplicate_count: 1,
     severity_score: 25,
-    progress_status: 'pending'
+    progress_status: 'assigned'
   }).select().single();
 
   if (insertError) throw insertError;
 
-  const { data: matchedOrgs } = await supabase.from('organizations').select('*');
-  if (matchedOrgs && matchedOrgs.length > 0) {
-    const targetOrg = matchedOrgs[0];
+  // Direct Auto-Assignment to Organization
+  if (targetOrg) {
     await supabase.from('assignments').insert({
       problem_id: newProb.id,
       organization_id: targetOrg.id,
-      status: 'pending',
-      progress_percentage: 10,
-      notes: `Automated AI priority assignment based on initial severity score of 25.`
+      status: 'assigned',
+      progress_percentage: 15,
+      notes: `Direct automated assignment to ${targetOrg.name} upon citizen submission.`
+    });
+
+    await supabase.from('notifications').insert({
+      problem_id: newProb.id,
+      type: 'auto_assignment',
+      title: 'Direct Problem Auto-Assigned',
+      message: `Problem [${generatedId}] was directly assigned to ${targetOrg.name}.`
     });
   }
 
