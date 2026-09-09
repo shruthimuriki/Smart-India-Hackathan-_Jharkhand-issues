@@ -1,14 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Search, Filter, ArrowRight, ExternalLink } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { Search, Filter, ExternalLink, CheckCircle2, ShieldCheck } from 'lucide-react';
 
 export default function Explore() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [problems, setProblems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [claimingId, setClaimingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDomain, setSelectedDomain] = useState('All');
+
+  const isOrganization = user?.role === 'organization';
 
   useEffect(() => {
     fetchExploreProblems();
@@ -31,6 +36,62 @@ export default function Explore() {
     }
   };
 
+  const handleClaimProblem = async (e, problem) => {
+    e.stopPropagation(); // Prevent card navigation click
+    setClaimingId(problem.id);
+
+    try {
+      // 1. Get or create current organization record
+      let orgId = user?.org_id;
+
+      if (!orgId) {
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('id')
+          .limit(1)
+          .maybeSingle();
+
+        orgId = orgData?.id;
+      }
+
+      // 2. Insert Assignment record
+      const { error: assignErr } = await supabase.from('assignments').insert({
+        problem_id: problem.id,
+        organization_id: orgId || null,
+        status: 'assigned',
+        progress_percentage: 10,
+        notes: `Problem taken up by organization (${user?.email || 'Registered Institution'})`
+      });
+
+      if (assignErr) throw assignErr;
+
+      // 3. Update Problem status to 'assigned'
+      const { error: probErr } = await supabase
+        .from('problems')
+        .update({ 
+          status: 'assigned', 
+          progress_status: 'assigned' 
+        })
+        .eq('id', problem.id);
+
+      if (probErr) throw probErr;
+
+      // 4. Optimistic UI update
+      setProblems(prev =>
+        prev.map(p =>
+          p.id === problem.id ? { ...p, status: 'assigned', progress_status: 'assigned' } : p
+        )
+      );
+
+      alert(`Successfully taken up Problem [${problem.problem_id}]! It is now assigned to your organization.`);
+    } catch (err) {
+      console.error('Error claiming problem:', err);
+      alert('Failed to claim problem. Please try again.');
+    } finally {
+      setClaimingId(null);
+    }
+  };
+
   const filteredProblems = problems.filter(prob => {
     const matchesSearch = 
       (prob.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -47,7 +108,9 @@ export default function Explore() {
       <div style={{ marginBottom: '2rem' }}>
         <h2>Explore Community Challenges</h2>
         <p style={{ color: '#6B675E', fontSize: '0.9rem' }}>
-          Browse transparent societal issues reported across Jharkhand. Click on any card to view detailed progress and handling status.
+          {isOrganization 
+            ? 'Select any open issue below and click "I Want to Solve This Problem" to claim responsibility.' 
+            : 'Browse community problems across Jharkhand. Click any card to track progress.'}
         </p>
       </div>
 
@@ -83,7 +146,7 @@ export default function Explore() {
         </div>
       </div>
 
-      {/* CLICKABLE PROBLEM CARDS GRID */}
+      {/* PROBLEM CARDS GRID */}
       {loading ? (
         <p>Loading portal issues...</p>
       ) : filteredProblems.length === 0 ? (
@@ -106,15 +169,7 @@ export default function Explore() {
                   display: 'flex', 
                   flexDirection: 'column', 
                   justify: 'space-between',
-                  border: '1px solid #E6E1D5' 
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.transform = 'translateY(-4px)';
-                  e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.1)';
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = 'none';
+                  border: isAssigned ? '1px solid #2563EB' : '1px solid #E6E1D5' 
                 }}
               >
                 <div>
@@ -152,11 +207,32 @@ export default function Explore() {
                   </p>
                 </div>
 
-                <div style={{ borderTop: '1px solid #F3F4F6', pt: '0.8rem', paddingTop: '0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#9CA3AF' }}>
-                    Location: {prob.location_text || prob.district} | ID: {prob.problem_id}
-                  </span>
-                  <ExternalLink size={16} color="#E03E1A" />
+                <div>
+                  {/* ORGANIZATION ACTION BUTTON */}
+                  {isOrganization && !isAssigned && (
+                    <button 
+                      onClick={(e) => handleClaimProblem(e, prob)} 
+                      disabled={claimingId === prob.id}
+                      className="btn btn-orange" 
+                      style={{ width: '100%', marginBottom: '0.8rem', fontSize: '0.82rem', justifyContent: 'center' }}
+                    >
+                      <ShieldCheck size={16} /> 
+                      {claimingId === prob.id ? 'Taking Up Problem...' : 'I Want to Solve This Problem'}
+                    </button>
+                  )}
+
+                  {isAssigned && (
+                    <div style={{ fontSize: '0.75rem', color: '#2563EB', fontWeight: 700, marginBottom: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <CheckCircle2 size={14} /> Taken Up by Organization
+                    </div>
+                  )}
+
+                  <div style={{ borderTop: '1px solid #F3F4F6', paddingTop: '0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#9CA3AF' }}>
+                      Location: {prob.location_text || prob.district} | ID: {prob.problem_id}
+                    </span>
+                    <ExternalLink size={16} color="#E03E1A" />
+                  </div>
                 </div>
               </div>
             );
