@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { generateProblemId, classifyProblem, checkSimilarProblems } from '../lib/categorization';
+import { processProblemSubmission } from '../lib/categorization';
 import { AlertTriangle, Upload, CheckCircle, Mic, MicOff, Languages } from 'lucide-react';
 
 const DISTRICTS = ['Ranchi', 'Dhanbad', 'Jamshedpur', 'Hazaribagh', 'Bokaro', 'Deoghar', 'Giridih', 'Ramgarh'];
@@ -21,6 +21,7 @@ export default function PostProblem() {
   const [error, setError] = useState(null);
   const [similarProb, setSimilarProb] = useState(null);
 
+  // Voice Recognition & Translation States
   const [isListening, setIsListening] = useState(false);
   const [speechLanguage, setSpeechLanguage] = useState('hi-IN');
   const [activeVoiceTarget, setActiveVoiceTarget] = useState('description');
@@ -45,7 +46,7 @@ export default function PostProblem() {
   const startSpeechRecognition = (targetField) => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert('Speech recognition is not supported in this browser. Please use Chrome or Edge.');
+      alert('Speech recognition is not supported in this browser. Please use Google Chrome or MS Edge.');
       return;
     }
 
@@ -80,51 +81,25 @@ export default function PostProblem() {
     setError(null);
 
     try {
-      const classification = await classifyProblem(formData.title, formData.description);
-      const duplicate = await checkSimilarProblems(formData.title, classification.domain);
-      
-      if (duplicate) {
-        setSimilarProb(duplicate);
+      // Process submission via categorization library (Inserts with status 'available')
+      const result = await processProblemSubmission({
+        title: formData.title,
+        description: formData.description,
+        district: formData.district,
+        locationText: formData.locationText,
+        posterName: formData.posterName.trim() || 'Anonymous Citizen',
+        posterContact: formData.posterContact.trim() || 'Not Provided'
+      });
+
+      if (result.isDuplicate) {
+        setSimilarProb(result.problem);
         setLoading(false);
         return;
       }
 
-      const generatedId = await generateProblemId(classification.domain);
+      const newProb = result.problem;
 
-      const { data: newProb, error: insertError } = await supabase.from('problems').insert({
-        problem_id: generatedId,
-        title: formData.title,
-        description: formData.description,
-        domain: classification.domain,
-        ai_confidence: classification.confidence,
-        matched_keywords: classification.matchedKeywords,
-        status: 'available',
-        district: formData.district,
-        location_text: formData.locationText,
-        poster_name: formData.posterName.trim() || 'Anonymous Citizen',
-        poster_contact: formData.posterContact.trim() || 'Not Provided'
-      }).select().single();
-
-      if (insertError) throw insertError;
-
-      const { data: matchedOrgs } = await supabase.from('organizations').select('*');
-      if (matchedOrgs && matchedOrgs.length > 0) {
-        const targetOrg = matchedOrgs[0];
-        await supabase.from('assignments').insert({
-          problem_id: newProb.id,
-          organization_id: targetOrg.id,
-          status: 'pending',
-          notes: 'Automated AI assignment based on ' + classification.domain + ' specialization.'
-        });
-
-        await supabase.from('notifications').insert({
-          problem_id: newProb.id,
-          type: 'auto_assignment',
-          title: 'Automated Problem Assignment Request',
-          message: 'Problem [' + generatedId + '] in ' + classification.domain + ' was automatically assigned to ' + targetOrg.name + '.'
-        });
-      }
-
+      // Handle proof file uploads to Supabase storage if selected
       for (const file of files) {
         const fileExt = file.name.split('.').pop();
         const fileName = Math.random() + '.' + fileExt;
@@ -140,7 +115,7 @@ export default function PostProblem() {
         });
       }
 
-      navigate('/track?id=' + generatedId);
+      navigate('/explore');
     } catch (err) {
       setError(err.message || 'Error submitting problem.');
     } finally {
@@ -153,9 +128,10 @@ export default function PostProblem() {
       <div className="card">
         <h2>Report a Community Issue</h2>
         <p style={{ color: '#6B675E', fontSize: '0.85rem', marginBottom: '1.2rem' }}>
-          Submit problem details. Citizens can post anonymously without providing personal contact details.
+          Submit problem details. Citizens can post anonymously without providing personal contact details. Issues will be listed as <strong>AVAILABLE</strong> for organizations to take up.
         </p>
 
+        {/* VOICE LANGUAGE SELECTOR */}
         <div style={{ background: '#FAF8F5', border: '1px solid #E6E1D5', borderRadius: 8, padding: '0.8rem 1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', fontWeight: 700, color: '#0C2619' }}>
             <Languages size={18} color="#E03E1A" />
@@ -181,12 +157,13 @@ export default function PostProblem() {
               <AlertTriangle size={18}/> SIMILAR ISSUE ALREADY REPORTED!
             </div>
             <p style={{ marginTop: '0.4rem', fontSize: '0.85rem' }}>
-              Matching Issue ID: <strong>{similarProb.problem_id}</strong> ({similarProb.title}).
+              Matching Issue ID: <strong>{similarProb.problem_id}</strong> ({similarProb.title}). Severity score boosted!
             </p>
           </div>
         )}
 
         <form onSubmit={handleSubmit}>
+          {/* PROBLEM TITLE WITH VOICE BUTTON */}
           <div className="form-group">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
               <label style={{ margin: 0 }}>Problem Title *</label>
@@ -208,6 +185,7 @@ export default function PostProblem() {
             />
           </div>
 
+          {/* PROBLEM DESCRIPTION WITH VOICE BUTTON */}
           <div className="form-group">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
               <label style={{ margin: 0 }}>Detailed Description *</label>
@@ -240,7 +218,7 @@ export default function PostProblem() {
             </div>
             <div className="form-group">
               <label>Specific Village / Area *</label>
-              <input className="form-control" required value={formData.locationText} onChange={e => setFormData({ ...formData, locationText: e.target.value })} />
+              <input className="form-control" required value={formData.locationText} onChange={e => setFormData({ ...formData, locationText: e.target.value })} placeholder="e.g. Village Rampur" />
             </div>
           </div>
 
@@ -276,7 +254,7 @@ export default function PostProblem() {
           </div>
 
           <button type="submit" className="btn btn-orange" style={{ width: '100%', justifyContent: 'center', marginTop: '1rem' }} disabled={loading || translating}>
-            {loading ? 'Submitting...' : 'SUBMIT PROBLEM (ANONYMOUS)'}
+            {loading ? 'Submitting...' : 'SUBMIT PROBLEM (AVAILABLE)'}
           </button>
         </form>
       </div>

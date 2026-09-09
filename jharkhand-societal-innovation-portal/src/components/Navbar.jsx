@@ -1,130 +1,91 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Bell, LogOut, X, Check, UserCheck, Trash2 } from 'lucide-react';
+import React from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../lib/supabase';
-import PalashLogo from './PalashLogo';
+import { LogOut, User, Bell } from 'lucide-react';
 
 export default function Navbar() {
-  const { user, profile, logout } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [unreadNotifications, setUnreadNotifications] = useState([]);
-  const [showModal, setShowModal] = useState(false);
+  const location = useLocation();
 
-  const userRole = profile?.role || 'citizen';
-  const canReport = userRole === 'citizen';
-  const canCollaborate = userRole === 'organization' || userRole === 'citizen';
-  const isGovernment = userRole === 'government';
+  // Determine user role (Default to citizen if logged out or guest)
+  const isOrganization = user?.role === 'organization';
+  const isGovernment = user?.role === 'government';
+  const isCitizen = !isOrganization && !isGovernment;
 
-  useEffect(() => {
-    fetchUnseenNotifications();
-    const channel = supabase.channel('realtime:nav_notifications')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => fetchUnseenNotifications())
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [profile]);
-
-  const fetchUnseenNotifications = async () => {
-    const { data } = await supabase.from('notifications')
-      .select('*')
-      .eq('is_read', false)
-      .order('created_at', { ascending: false });
-    if (data) setUnreadNotifications(data);
-  };
-
-  const dismissNotification = async (id) => {
-    await supabase.from('notifications').update({ is_read: true }).eq('id', id);
-    setUnreadNotifications(prev => prev.filter(n => n.id !== id));
-  };
-
-  const deleteSingleNotification = async (id) => {
-    await supabase.from('notifications').delete().eq('id', id);
-    setUnreadNotifications(prev => prev.filter(n => n.id !== id));
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
   };
 
   return (
-    <nav style={{ background: '#FFFFFF', borderBottom: '1px solid #E6E1D5', padding: '0.8rem 2rem', position: 'sticky', top: 0, zIndex: 100 }}>
-      <div style={{ maxWidth: 1280, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <header style={{ background: '#FFFFFF', borderBottom: '1px solid #E6E1D5', sticky: 'top', top: 0, zIndex: 1000 }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0.8rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         
-        <Link to="/" style={{ textDecoration: 'none' }}>
-          <PalashLogo height={46} />
+        {/* BRAND LOGO */}
+        <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+          <img src="/logo.png" alt="PALASH Logo" style={{ height: 42, width: 'auto' }} onError={(e) => { e.target.style.display = 'none'; }} />
+          <div>
+            <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#0C2619', letterSpacing: '1px', fontFamily: 'serif' }}>
+              P<span style={{ color: '#E03E1A' }}>Λ</span>L<span style={{ color: '#E03E1A' }}>Λ</span>SH
+            </div>
+            <div style={{ fontSize: '0.65rem', color: '#6B675E', fontWeight: 700, letterSpacing: '0.5px' }}>
+              — FROM CHALLENGES TO CHANGE —
+            </div>
+          </div>
         </Link>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.8rem', fontWeight: 600, fontSize: '0.9rem' }}>
-          <Link to="/" style={{ color: '#141815', textDecoration: 'none' }}>Home</Link>
-          {canReport && <Link to="/post-problem" style={{ color: '#6B675E', textDecoration: 'none' }}>Report</Link>}
-          <Link to="/explore" style={{ color: '#6B675E', textDecoration: 'none' }}>Explore</Link>
-          {canCollaborate && <Link to="/organization" style={{ color: '#6B675E', textDecoration: 'none' }}>Collaborate</Link>}
-          {isGovernment && <Link to="/government" style={{ color: '#6B675E', textDecoration: 'none' }}>Govt Oversight</Link>}
-          <Link to="/track" style={{ color: '#6B675E', textDecoration: 'none' }}>Track</Link>
-        </div>
+        {/* DYNAMIC NAVIGATION LINKS */}
+        <nav style={{ display: 'flex', gap: '1.8rem', alignItems: 'center', fontWeight: 600, fontSize: '0.9rem' }}>
+          <Link to="/" style={{ color: location.pathname === '/' ? '#E03E1A' : '#0C2619', textDecoration: 'none' }}>
+            Home
+          </Link>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1.2rem' }}>
-          <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => setShowModal(true)}>
-            <div style={{ background: '#FAF8F5', padding: '0.6rem', borderRadius: '50%', border: '1px solid #E6E1D5', display: 'flex' }}>
-              <Bell size={20} color="#141815" />
-            </div>
-            {unreadNotifications.length > 0 && (
-              <span style={{ position: 'absolute', top: -2, right: -2, background: '#E03E1A', color: 'white', borderRadius: '50%', padding: '2px 6px', fontSize: '0.65rem', fontWeight: 800 }}>
-                {unreadNotifications.length}
-              </span>
-            )}
+          <Link to="/post-problem" style={{ color: location.pathname === '/post-problem' ? '#E03E1A' : '#0C2619', textDecoration: 'none' }}>
+            Report
+          </Link>
+
+          <Link to="/explore" style={{ color: location.pathname === '/explore' ? '#E03E1A' : '#0C2619', textDecoration: 'none' }}>
+            Explore
+          </Link>
+
+          {/* HIDDEN FOR CITIZENS: ONLY SHOW COLLABORATE & TRACK TO ORG/GOVT */}
+          {!isCitizen && (
+            <>
+              <Link to="/collaborate" style={{ color: location.pathname === '/collaborate' ? '#E03E1A' : '#0C2619', textDecoration: 'none' }}>
+                Collaborate
+              </Link>
+              <Link to="/track" style={{ color: location.pathname === '/track' ? '#E03E1A' : '#0C2619', textDecoration: 'none' }}>
+                Track
+              </Link>
+            </>
+          )}
+        </nav>
+
+        {/* USER PROFILE / ROLE BADGE */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{ position: 'relative' }}>
+            <Bell size={20} color="#0C2619" style={{ cursor: 'pointer' }} />
+            <span style={{ position: 'absolute', top: -6, right: -6, background: '#E03E1A', color: 'white', borderRadius: '50%', padding: '0.1rem 0.4rem', fontSize: '0.65rem', fontWeight: 800 }}>
+              48
+            </span>
           </div>
 
-          {user ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', background: '#FAF8F5', padding: '0.4rem 0.8rem', borderRadius: 8, border: '1px solid #E6E1D5' }}>
-              <UserCheck size={18} color="#0C2619" />
-              <div style={{ fontSize: '0.8rem' }}>
-                <div style={{ fontWeight: 700, color: '#141815' }}>{profile?.name || 'Logged User'}</div>
-                <span className={'badge badge-' + userRole}>{userRole.toUpperCase()}</span>
-              </div>
-              <button onClick={() => { logout(); navigate('/'); }} className="btn btn-outline" style={{ padding: '0.3rem 0.6rem', marginLeft: '0.4rem' }} title="Logout">
-                <LogOut size={14}/>
-              </button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <Link to="/login" className="btn btn-primary">Login</Link>
-              <Link to="/register" className="btn btn-outline">Sign Up</Link>
-            </div>
+          <div style={{ background: '#FAF8F5', border: '1px solid #E6E1D5', borderRadius: 20, padding: '0.3rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <User size={16} color="#0C2619" />
+            <span style={{ fontSize: '0.8rem', fontWeight: 700 }}>{user?.email ? user.email.split('@')[0] : 'Guest'}</span>
+            <span style={{ background: isOrganization ? '#FEF3C7' : isGovernment ? '#DCFCE7' : '#E0F2FE', color: isOrganization ? '#D97706' : isGovernment ? '#15803D' : '#0369A1', fontSize: '0.65rem', fontWeight: 800, padding: '0.15rem 0.4rem', borderRadius: 10, textTransform: 'UPPERCASE' }}>
+              {isOrganization ? 'ORGANIZATION' : isGovernment ? 'GOVERNMENT' : 'CITIZEN'}
+            </span>
+          </div>
+
+          {user && (
+            <button onClick={handleLogout} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }} title="Sign Out">
+              <LogOut size={18} color="#6B675E" />
+            </button>
           )}
         </div>
       </div>
-
-      {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #E6E1D5', paddingBottom: '0.8rem' }}>
-              <h3 style={{ fontSize: '1.1rem' }}>Notifications ({unreadNotifications.length})</h3>
-              <X style={{ cursor: 'pointer' }} onClick={() => setShowModal(false)} />
-            </div>
-
-            {unreadNotifications.length === 0 ? (
-              <p style={{ color: '#6B675E', textAlign: 'center', padding: '1.5rem 0' }}>No new notifications found.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-                {unreadNotifications.map(n => (
-                  <div key={n.id} style={{ background: '#FEF3C7', padding: '0.8rem', borderRadius: 8, border: '1px solid #E6E1D5' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <strong style={{ fontSize: '0.9rem', color: '#141815' }}>{n.title}</strong>
-                      <div style={{ display: 'flex', gap: '0.4rem' }}>
-                        <button onClick={() => dismissNotification(n.id)} style={{ background: '#0C2619', color: 'white', border: 'none', padding: '0.2rem 0.5rem', borderRadius: 4, fontSize: '0.7rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                          <Check size={12}/> Dismiss
-                        </button>
-                        <button onClick={() => deleteSingleNotification(n.id)} style={{ background: '#DC2626', color: 'white', border: 'none', padding: '0.2rem 0.5rem', borderRadius: 4, fontSize: '0.7rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }} title="Delete notification">
-                          <Trash2 size={12}/>
-                        </button>
-                      </div>
-                    </div>
-                    <p style={{ fontSize: '0.8rem', color: '#6B675E', marginTop: '0.3rem' }}>{n.message}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </nav>
+    </header>
   );
 }
