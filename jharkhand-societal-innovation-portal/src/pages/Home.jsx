@@ -1,99 +1,59 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, FileText, CheckCircle2, Users, Lightbulb } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import { useAuth } from '../context/AuthContext';
+import { AlertCircle, Search, Building2, Shield, ArrowRight } from 'lucide-react';
 
 export default function Home() {
-  const { profile } = useAuth();
-  const canReport = profile?.role === 'citizen' || !profile;
-
-  const [stats, setStats] = useState({ reported: 0, progress: 0, orgs: 0, resolved: 0 });
-
-  useEffect(() => {
-    fetchPortalStats();
-  }, []);
-
-  const fetchPortalStats = async () => {
-    try {
-      const { count: reported } = await supabase.from('problems').select('*', { count: 'exact', head: true });
-      const { count: progress } = await supabase.from('problems').select('*', { count: 'exact', head: true }).eq('status', 'in_progress');
-      const { count: orgs } = await supabase.from('organizations').select('*', { count: 'exact', head: true });
-      const { count: resolved } = await supabase.from('problems').select('*', { count: 'exact', head: true }).eq('status', 'resolved');
-
-      setStats({
-        reported: reported || 0,
-        progress: progress || 0,
-        orgs: orgs || 0,
-        resolved: resolved || 0
-      });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
   return (
     <div>
-      <div style={{ background: 'linear-gradient(180deg, #FFFFFF 0%, #FAF8F5 100%)', border: '1px solid #E6E1D5', borderRadius: 16, padding: '4rem 2.5rem', textAlign: 'center', marginBottom: '2.5rem' }}>
-        <span style={{ fontSize: '0.8rem', fontWeight: 800, letterSpacing: '1.5px', color: '#E03E1A', textTransform: 'uppercase' }}>A STRONGER JHARKHAND TOGETHER</span>
-        <h1 style={{ fontSize: '3.2rem', fontWeight: 800, margin: '1rem 0', color: '#141815', lineHeight: 1.15 }}>
-          Local Challenges.<br/> Real Solutions.<br/>
-          <span style={{ color: '#E03E1A' }}>A Brighter Tomorrow.</span>
-        </h1>
-        <p style={{ fontSize: '1.1rem', color: '#6B675E', maxWidth: 720, margin: '0 auto 2.5rem' }}>
-          PALASH connects citizens, institutions, industry, and government to identify, prioritize, and solve real problems of Jharkhand.
-        </p>
-        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-          {canReport && (
-            <Link to="/post-problem" className="btn btn-orange" style={{ padding: '0.85rem 1.8rem', fontSize: '1rem' }}>
-              Report a Problem <ArrowRight size={18}/>
+      {/* HERO SECTION WITH VIDEO BACKGROUND */}
+      <div style={{ position: 'relative', width: '100%', height: '75vh', overflow: 'hidden', borderRadius: '16px', marginBottom: '2.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+        <video 
+          autoPlay 
+          loop 
+          muted 
+          playsInline 
+          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', filter: 'brightness(0.4)' }}
+        >
+          <source src="https://assets.mixkit.co/videos/preview/mixkit-drone-view-of-a-rural-town-41551-large.mp4" type="video/mp4" />
+          Your browser does not support video background.
+        </video>
+
+        <div style={{ position: 'relative', zIndex: 2, textAlign: 'center', maxWidth: 800, padding: '0 1.5rem' }}>
+          <h1 style={{ fontSize: '2.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '1rem', textShadow: '0 4px 12px rgba(0,0,0,0.6)' }}>
+            PAL<span style={{ color: '#E03E1A' }}>A</span>SH Portal Jharkhand
+          </h1>
+          <p style={{ fontSize: '1.15rem', marginBottom: '2rem', opacity: 0.95, lineHeight: 1.6, textShadow: '0 2px 8px rgba(0,0,0,0.6)' }}>
+            A state-level collaborative platform empowering citizens, institutions, and government to resolve community challenges with AI auto-assignment and priority severity tracking.
+          </p>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <Link to="/post-problem" className="btn btn-orange" style={{ padding: '0.8rem 1.8rem', fontSize: '1rem' }}>
+              Report Issue Anonymously <ArrowRight size={18} />
             </Link>
-          )}
-          <Link to="/explore" className="btn btn-outline" style={{ padding: '0.85rem 1.8rem', fontSize: '1rem' }}>
-            Explore Solutions
-          </Link>
+            <Link to="/explore" className="btn" style={{ background: 'white', color: '#0C2619', padding: '0.8rem 1.8rem', fontSize: '1rem', fontWeight: 700 }}>
+              Explore Portal Issues
+            </Link>
+          </div>
         </div>
       </div>
 
-      <div className="grid-4" style={{ marginBottom: '2.5rem' }}>
-        <div className="card" style={{ textAlign: 'center' }}>
-          <h2 style={{ color: '#0C2619', fontSize: '2rem', fontWeight: 800 }}>{stats.reported}</h2>
-          <p style={{ color: '#6B675E', fontSize: '0.85rem', fontWeight: 600 }}>Problems Reported</p>
+      {/* PORTAL FEATURES GRID */}
+      <div className="grid-3" style={{ marginBottom: '3rem' }}>
+        <div className="card" style={{ textAlign: 'center', padding: '2rem 1.5rem' }}>
+          <AlertCircle size={40} color="#E03E1A" style={{ marginBottom: '1rem' }} />
+          <h3 style={{ marginBottom: '0.5rem' }}>Voice & Anonymous Reporting</h3>
+          <p style={{ fontSize: '0.88rem', color: '#6B675E' }}>Report issues in Hindi or Bengali via voice input. No mandatory personal details or emails required.</p>
         </div>
-        <div className="card" style={{ textAlign: 'center' }}>
-          <h2 style={{ color: '#E03E1A', fontSize: '2rem', fontWeight: 800 }}>{stats.progress}</h2>
-          <p style={{ color: '#6B675E', fontSize: '0.85rem', fontWeight: 600 }}>Solutions in Progress</p>
-        </div>
-        <div className="card" style={{ textAlign: 'center' }}>
-          <h2 style={{ color: '#0C2619', fontSize: '2rem', fontWeight: 800 }}>{stats.orgs}</h2>
-          <p style={{ color: '#6B675E', fontSize: '0.85rem', fontWeight: 600 }}>Institutions Onboarded</p>
-        </div>
-        <div className="card" style={{ textAlign: 'center' }}>
-          <h2 style={{ color: '#15803D', fontSize: '2rem', fontWeight: 800 }}>{stats.resolved}</h2>
-          <p style={{ color: '#6B675E', fontSize: '0.85rem', fontWeight: 600 }}>Resolved Issues</p>
-        </div>
-      </div>
 
-      <div className="grid-4">
-        <div className="card">
-          <FileText size={32} color="#E03E1A" style={{ marginBottom: '0.8rem' }} />
-          <h3>Report</h3>
-          <p style={{ fontSize: '0.85rem', color: '#6B675E', marginTop: '0.4rem' }}>Raise a problem directly from your community.</p>
+        <div className="card" style={{ textAlign: 'center', padding: '2rem 1.5rem' }}>
+          <Building2 size={40} color="#0C2619" style={{ marginBottom: '1rem' }} />
+          <h3 style={{ marginBottom: '0.5rem' }}>Severity & High Priority</h3>
+          <p style={{ fontSize: '0.88rem', color: '#6B675E' }}>Repeated duplicate reports dynamically increase the severity meter, ensuring institutions act on critical problems first.</p>
         </div>
-        <div className="card">
-          <Lightbulb size={32} color="#0C2619" style={{ marginBottom: '0.8rem' }} />
-          <h3>Assess</h3>
-          <p style={{ fontSize: '0.85rem', color: '#6B675E', marginTop: '0.4rem' }}>Dynamic domain classification and impact scoring.</p>
-        </div>
-        <div className="card">
-          <Users size={32} color="#E03E1A" style={{ marginBottom: '0.8rem' }} />
-          <h3>Collaborate</h3>
-          <p style={{ fontSize: '0.85rem', color: '#6B675E', marginTop: '0.4rem' }}>Connect universities and labs with stakeholders.</p>
-        </div>
-        <div className="card">
-          <CheckCircle2 size={32} color="#15803D" style={{ marginBottom: '0.8rem' }} />
-          <h3>Solve</h3>
-          <p style={{ fontSize: '0.85rem', color: '#6B675E', marginTop: '0.4rem' }}>Track progress from creation to complete resolution.</p>
+
+        <div className="card" style={{ textAlign: 'center', padding: '2rem 1.5rem' }}>
+          <Shield size={40} color="#E03E1A" style={{ marginBottom: '1rem' }} />
+          <h3 style={{ marginBottom: '0.5rem' }}>Government Oversight</h3>
+          <p style={{ fontSize: '0.88rem', color: '#6B675E' }}>State officials monitor live solution progress, assigned handling organizations, and resolution timelines.</p>
         </div>
       </div>
     </div>

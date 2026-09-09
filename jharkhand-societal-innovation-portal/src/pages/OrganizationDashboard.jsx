@@ -1,116 +1,130 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../context/AuthContext';
-import { Clock, Check, X } from 'lucide-react';
+import { Building2, CheckCircle, Clock, AlertTriangle, RefreshCw } from 'lucide-react';
 
 export default function OrganizationDashboard() {
-  const { profile } = useAuth();
-  const navigate = useNavigate();
-  const [assignedInvites, setAssignedInvites] = useState([]);
-  const [activeProjects, setActiveProjects] = useState([]);
+  const [assignments, setAssignments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [updatingId, setUpdatingId] = useState(null);
 
   useEffect(() => {
-    fetchAssignments();
-  }, [profile]);
+    fetchAssignedProblems();
+  }, []);
 
-  const fetchAssignments = async () => {
-    const { data: invites } = await supabase.from('assignments')
-      .select('*, problems(*)')
-      .eq('status', 'pending');
-    setAssignedInvites(invites || []);
-
-    const { data: active } = await supabase.from('problems')
-      .select('*')
-      .eq('status', 'in_progress');
-    setActiveProjects(active || []);
+  const fetchAssignedProblems = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('assignments')
+      .select('*, problem:problems(*)');
+    setAssignments(data || []);
+    setLoading(false);
   };
 
-  const handleAcceptAssignment = async (invite) => {
-    try {
-      await supabase.from('assignments').update({ status: 'in_progress', notes: 'Assignment accepted by ' + (profile?.name || 'Institution') }).eq('id', invite.id);
-      await supabase.from('problems').update({ status: 'in_progress' }).eq('id', invite.problem_id);
+  const handleStatusUpdate = async (assignmentId, problemId, newStatus, newPercentage) => {
+    setUpdatingId(assignmentId);
+    
+    // Update assignment record
+    await supabase
+      .from('assignments')
+      .update({ status: newStatus, progress_percentage: newPercentage, last_updated: new Date() })
+      .eq('id', assignmentId);
 
-      await supabase.from('notifications').insert({
-        problem_id: invite.problem_id,
-        type: 'assignment_accepted',
-        title: 'Assignment Accepted',
-        message: 'Institution ' + (profile?.name || 'Partner') + ' accepted problem assignment.'
-      });
+    // Sync with problem status
+    await supabase
+      .from('problems')
+      .update({ progress_status: newStatus })
+      .eq('id', problemId);
 
-      fetchAssignments();
-      navigate('/solution-tracker?problem_id=' + invite.problem_id);
-    } catch (err) {
-      alert(err.message);
-    }
-  };
-
-  const handleIgnoreAssignment = async (invite) => {
-    try {
-      await supabase.from('assignments').update({ status: 'rejected', notes: 'Assignment ignored/declined.' }).eq('id', invite.id);
-      
-      await supabase.from('notifications').insert({
-        problem_id: invite.problem_id,
-        type: 'assignment_declined',
-        title: 'Assignment Declined',
-        message: 'Institution declined assignment request for problem ID ' + invite.problem_id
-      });
-
-      fetchAssignments();
-    } catch (err) {
-      alert(err.message);
-    }
+    await fetchAssignedProblems();
+    setUpdatingId(null);
   };
 
   return (
-    <div>
-      <div className="card">
-        <h2>PALASH Collaboration & Solution Portal</h2>
-        <p style={{ color: '#6B675E', fontSize: '0.85rem' }}>Review automated problem assignments, accept/ignore tasks, and log milestone execution.</p>
+    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+        <div>
+          <h2>Organization Execution Dashboard</h2>
+          <p style={{ color: '#6B675E', fontSize: '0.85rem' }}>Manage assigned community challenges and update execution state in real-time.</p>
+        </div>
+        <button onClick={fetchAssignedProblems} className="btn" style={{ background: '#FAF8F5', border: '1px solid #E6E1D5' }}>
+          <RefreshCw size={16} /> Refresh
+        </button>
       </div>
 
-      <div className="grid-2">
-        <div className="card">
-          <h3>Automated Assignments ({assignedInvites.length})</h3>
-          <p style={{ color: '#6B675E', fontSize: '0.8rem', marginBottom: '1rem' }}>Accept or ignore problem statements auto-assigned to your institution.</p>
+      {loading ? (
+        <p>Loading assigned tasks...</p>
+      ) : assignments.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
+          <Building2 size={40} color="#6B675E" />
+          <p style={{ marginTop: '1rem' }}>No problems assigned yet.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+          {assignments.map(item => {
+            const prob = item.problem || {};
+            const severity = prob.severity_score || 25;
+            const duplicates = prob.duplicate_count || 1;
 
-          {assignedInvites.length === 0 ? <p style={{ fontSize: '0.85rem', color: '#9CA3AF' }}>No pending assignment invites.</p> : (
-            assignedInvites.map(inv => (
-              <div key={inv.id} style={{ border: '1px solid #E6E1D5', borderRadius: 8, padding: '1rem', marginBottom: '0.8rem', background: '#FEF3C7' }}>
-                <span className="badge badge-available">PENDING ACCEPTANCE</span>
-                <h4 style={{ margin: '0.4rem 0' }}>{inv.problems?.title}</h4>
-                <p style={{ fontSize: '0.8rem', color: '#6B675E', marginBottom: '0.8rem' }}>{inv.problems?.description}</p>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button onClick={() => handleAcceptAssignment(inv)} className="btn btn-primary" style={{ flex: 1, justifyContent: 'center', fontSize: '0.8rem' }}>
-                    <Check size={14}/> Accept & Solve
-                  </button>
-                  <button onClick={() => handleIgnoreAssignment(inv)} className="btn btn-danger" style={{ flex: 1, justifyContent: 'center', fontSize: '0.8rem' }}>
-                    <X size={14}/> Ignore
-                  </button>
+            return (
+              <div key={item.id} className="card" style={{ borderLeft: `6px solid ${severity > 50 ? '#DC2626' : '#E03E1A'}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
+                  <div>
+                    <span style={{ background: '#0C2619', color: 'white', padding: '0.2rem 0.6rem', borderRadius: 4, fontSize: '0.75rem', fontWeight: 700 }}>
+                      ID: {prob.problem_id || 'N/A'}
+                    </span>
+                    <h3 style={{ marginTop: '0.4rem', marginBottom: '0.2rem' }}>{prob.title}</h3>
+                    <p style={{ fontSize: '0.85rem', color: '#6B675E' }}>{prob.district} • {prob.domain}</p>
+                  </div>
+
+                  {/* SEVERITY METER */}
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: severity > 50 ? '#DC2626' : '#0C2619', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <AlertTriangle size={14} /> SEVERITY METER: {severity}%
+                    </div>
+                    <div style={{ width: 120, height: 8, background: '#E6E1D5', borderRadius: 4, overflow: 'hidden', marginTop: '0.3rem' }}>
+                      <div style={{ width: `${severity}%`, height: '100%', background: severity > 50 ? '#DC2626' : '#E03E1A' }} />
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: '#6B675E', marginTop: '0.2rem' }}>{duplicates} Duplicate Report(s)</div>
+                  </div>
+                </div>
+
+                <p style={{ fontSize: '0.9rem', marginBottom: '1.2rem', background: '#FAF8F5', padding: '0.8rem', borderRadius: 8 }}>
+                  {prob.description}
+                </p>
+
+                {/* EXECUTION STATE PROGRESS CONTROLS */}
+                <div style={{ background: '#FAF8F5', padding: '1rem', borderRadius: 8, border: '1px solid #E6E1D5', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '0.3rem' }}>Current Execution State:</label>
+                    <span className={`badge ${item.status === 'resolved' ? 'badge-resolved' : 'badge-progress'}`} style={{ textTransform: 'uppercase', padding: '0.4rem 0.8rem' }}>
+                      {item.status || 'pending'} ({item.progress_percentage || 0}%)
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button 
+                      onClick={() => handleStatusUpdate(item.id, prob.id, 'in_progress', 50)} 
+                      disabled={updatingId === item.id} 
+                      className="btn" 
+                      style={{ background: '#0C2619', color: 'white', fontSize: '0.8rem' }}
+                    >
+                      Set In Progress (50%)
+                    </button>
+                    <button 
+                      onClick={() => handleStatusUpdate(item.id, prob.id, 'resolved', 100)} 
+                      disabled={updatingId === item.id} 
+                      className="btn btn-orange" 
+                      style={{ fontSize: '0.8rem' }}
+                    >
+                      Mark Resolved (100%)
+                    </button>
+                  </div>
                 </div>
               </div>
-            ))
-          )}
+            );
+          })}
         </div>
-
-        <div className="card">
-          <h3>Active In-Progress Solutions ({activeProjects.length})</h3>
-          <p style={{ color: '#6B675E', fontSize: '0.8rem', marginBottom: '1rem' }}>Log milestone proof and manage deadlines.</p>
-
-          {activeProjects.length === 0 ? <p style={{ fontSize: '0.85rem', color: '#9CA3AF' }}>No active solutions under development.</p> : (
-            activeProjects.map(p => (
-              <div key={p.id} style={{ border: '1px solid #E6E1D5', borderRadius: 8, padding: '1rem', marginBottom: '0.8rem', background: '#FAF8F5' }}>
-                <span className="badge badge-in_progress">IN PROGRESS</span>
-                <h4 style={{ margin: '0.4rem 0' }}>{p.title}</h4>
-                <p style={{ fontSize: '0.8rem', color: '#6B675E', marginBottom: '0.8rem' }}>ID: {p.problem_id} | District: {p.district}</p>
-                <button onClick={() => navigate('/solution-tracker?problem_id=' + p.id)} className="btn btn-orange" style={{ width: '100%', justifyContent: 'center', fontSize: '0.85rem' }}>
-                  <Clock size={16}/> Open Solution Tracking Page
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

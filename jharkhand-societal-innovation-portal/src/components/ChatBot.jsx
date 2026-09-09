@@ -1,139 +1,146 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Bot, X, Send } from 'lucide-react';
+import React, { useState } from 'react';
+import { MessageSquare, X, Send, Mic, MicOff, CheckCircle2, Sparkles } from 'lucide-react';
+import { processProblemSubmission } from '../lib/categorization';
 
 export default function ChatBot() {
   const [isOpen, setIsOpen] = useState(false);
-  const [input, setInput] = useState('');
   const [messages, setMessages] = useState([
-    {
-      sender: 'bot',
-      text: 'Hello! I am PALASH Assistant. Ask me anything about reporting issues, auto-assignments, organization claims, government oversight, or tracking updates!'
-    }
+    { sender: 'bot', text: 'Namaste! I am PALASH AI Assistant. You can speak or type your community problem here, and I can automatically submit it to the portal for you!' }
   ]);
+  const [input, setInput] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const messagesEndRef = useRef(null);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isOpen]);
-
-  const generateAnswer = (query) => {
-    const q = query.toLowerCase().trim();
-
-    if (q.includes('assign') || q.includes('auto') || q.includes('institution') || q.includes('allocate')) {
-      return "When a citizen reports a problem, PALASH automatically analyzes the domain using NLP keyword classification and assigns the issue directly to the most qualified registered institution or university.";
-    }
-    if (q.includes('notification') || q.includes('dismiss') || q.includes('delete') || q.includes('bell')) {
-      return "Notifications are saved in Supabase. Once you click 'Dismiss' or 'Delete', its status is updated to read or permanently removed. It will NEVER be shown again, even across page refreshes or re-logins.";
-    }
-    if (q.includes('report') || q.includes('citizen') || q.includes('post') || q.includes('submit')) {
-      return "Citizens can submit community problems under the 'Report' tab. Enter a title, description, district, village, and optional media proof. The portal will check for duplicates and route it to an institution.";
-    }
-    if (q.includes('organization') || q.includes('collaborate') || q.includes('university') || q.includes('claim')) {
-      return "Organizations can manage auto-assigned issues under 'Collaborate' (Accept/Ignore) or claim any unassigned open public challenge directly from the 'Explore' page by clicking 'I want to solve this problem'.";
-    }
-    if (q.includes('government') || q.includes('oversight') || q.includes('admin') || q.includes('state')) {
-      return "Government officials can track state-wide impact statistics, monitor active collaborations, and inspect technical milestone verification reasons across all districts via the 'Govt Oversight' dashboard.";
-    }
-    if (q.includes('track') || q.includes('id') || q.includes('progress') || q.includes('status') || q.includes('search')) {
-      return "You can track any problem in real-time on the 'Track' page using its unique Problem ID (e.g. JH-AGR-2026-000001). It displays the assigned organization, progress bar percentage, and logged milestone reasons.";
-    }
-    if (q.includes('hello') || q.includes('hi') || q.includes('hey') || q.includes('namaste')) {
-      return "Greetings! How can I assist you with the PALASH portal today? Feel free to ask about reporting problems, organization workflows, or government oversight.";
+  const startVoiceInput = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Speech recognition is not supported in this browser. Please use Chrome or Edge.');
+      return;
     }
 
-    return "For '" + query + "': PALASH connects citizens, institutions, industry, and government across Jharkhand. Citizens report problems, the portal auto-assigns them to institutions, organizations update milestone progress with technical reasons, and officials oversee execution state-wide!";
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'hi-IN'; // Accepts Hindi / English
+    recognition.interimResults = false;
+
+    setIsListening(true);
+    recognition.start();
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(transcript);
+      setIsListening(false);
+    };
+
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
   };
 
-  const handleSend = (e) => {
-    e.preventDefault();
+  const handleSend = async () => {
     if (!input.trim()) return;
 
-    const userMessage = { sender: 'user', text: input.trim() };
-    const botReply = { sender: 'bot', text: generateAnswer(input.trim()) };
-
-    setMessages(prev => [...prev, userMessage, botReply]);
+    const userMsg = input;
+    setMessages(prev => [...prev, { sender: 'user', text: userMsg }]);
     setInput('');
+
+    // Check if the input contains a problem report intent
+    if (userMsg.length > 10 && (userMsg.toLowerCase().includes('problem') || userMsg.toLowerCase().includes('issue') || userMsg.toLowerCase().includes('broken') || userMsg.toLowerCase().includes('repair') || userMsg.toLowerCase().includes('water') || userMsg.toLowerCase().includes('road'))) {
+      setIsSubmitting(true);
+      setMessages(prev => [...prev, { sender: 'bot', text: '⚡ Processing your spoken voice/text and submitting it to the PALASH Portal automatically...' }]);
+
+      try {
+        const result = await processProblemSubmission({
+          title: userMsg.substring(0, 40) + '...',
+          description: userMsg,
+          district: 'Ranchi',
+          locationText: 'Voice Assistant Direct Submission',
+          posterName: 'Anonymous Voice Citizen',
+          posterContact: 'Voice Input'
+        });
+
+        if (result.isDuplicate) {
+          setMessages(prev => [...prev, { 
+            sender: 'bot', 
+            text: `⚠️ Similar issue detected! We incremented the duplicate counter for Problem ID [${result.problem.problem_id}]. Severity increased to ${result.newSeverity}%! Priority boosted for organization assignment.` 
+          }]);
+        } else {
+          setMessages(prev => [...prev, { 
+            sender: 'bot', 
+            text: `✅ Problem successfully registered! Generated ID: [${result.problem.problem_id}]. It has been automatically classified and queued for high-priority assignment.` 
+          }]);
+        }
+      } catch (err) {
+        setMessages(prev => [...prev, { sender: 'bot', text: 'Error registering your problem. Please try again or use the Report page.' }]);
+      } finally {
+        setIsSubmitting(false);
+      }
+    } else {
+      // Normal Chat Assistance
+      setTimeout(() => {
+        setMessages(prev => [...prev, { 
+          sender: 'bot', 
+          text: 'I can help you report issues! Try saying: "There is a broken water pipe in Ranchi" or "The road is damaged in Bokaro".' 
+        }]);
+      }, 600);
+    }
   };
 
   return (
-    <div style={{ position: 'fixed', bottom: '25px', right: '25px', zIndex: 1000 }}>
-      {!isOpen ? (
+    <div style={{ position: 'fixed', bottom: 25, right: 25, zIndex: 9999 }}>
+      {!isOpen && (
         <button 
           onClick={() => setIsOpen(true)} 
-          style={{ 
-            background: '#0C2619', 
-            color: 'white', 
-            border: 'none', 
-            borderRadius: '50px', 
-            padding: '0.8rem 1.4rem', 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '0.6rem', 
-            boxShadow: '0 8px 24px rgba(0,0,0,0.2)', 
-            cursor: 'pointer',
-            fontWeight: 700,
-            fontSize: '0.9rem'
-          }}
+          className="btn btn-orange" 
+          style={{ borderRadius: '50px', padding: '0.8rem 1.4rem', boxShadow: '0 8px 20px rgba(224, 62, 26, 0.4)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}
         >
-          <Bot size={22} color="#E03E1A" /> Ask PALASH AI
+          <Sparkles size={20} /> Ask PALASH AI (Voice enabled)
         </button>
-      ) : (
-        <div style={{ 
-          width: '360px', 
-          height: '480px', 
-          background: '#FFFFFF', 
-          borderRadius: '16px', 
-          border: '1px solid #E6E1D5', 
-          boxShadow: '0 12px 32px rgba(0,0,0,0.15)', 
-          display: 'flex', 
-          flexDirection: 'column', 
-          overflow: 'hidden' 
-        }}>
+      )}
+
+      {isOpen && (
+        <div style={{ width: 360, height: 480, background: '#FFFFFF', borderRadius: 16, boxShadow: '0 12px 32px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', border: '1px solid #E6E1D5', overflow: 'hidden' }}>
+          {/* Header */}
           <div style={{ background: '#0C2619', color: 'white', padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <Bot size={20} color="#E03E1A" />
-              <div>
-                <h4 style={{ fontSize: '0.95rem', margin: 0 }}>PALASH AI Assistant</h4>
-                <span style={{ fontSize: '0.7rem', color: '#A3B18A' }}>Online | Ready to help</span>
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.95rem' }}>
+              <Sparkles size={18} color="#E03E1A" /> PALASH AI Assistant
             </div>
-            <X size={18} style={{ cursor: 'pointer' }} onClick={() => setIsOpen(false)} />
+            <X size={20} style={{ cursor: 'pointer' }} onClick={() => setIsOpen(false)} />
           </div>
 
-          <div style={{ flex: 1, padding: '1rem', overflowY: 'auto', background: '#FAF8F5', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+          {/* Messages body */}
+          <div style={{ flex: 1, padding: '1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.8rem', background: '#FAF8F5' }}>
             {messages.map((m, idx) => (
-              <div key={idx} style={{ display: 'flex', justifyContent: m.sender === 'user' ? 'flex-end' : 'flex-start' }}>
-                <div style={{ 
-                  maxWidth: '82%', 
-                  padding: '0.7rem 0.9rem', 
-                  borderRadius: '12px', 
-                  fontSize: '0.85rem', 
-                  lineHeight: '1.4',
-                  background: m.sender === 'user' ? '#E03E1A' : '#FFFFFF', 
-                  color: m.sender === 'user' ? '#FFFFFF' : '#141815',
-                  border: m.sender === 'bot' ? '1px solid #E6E1D5' : 'none',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.03)'
-                }}>
-                  {m.text}
-                </div>
+              <div key={idx} style={{ alignSelf: m.sender === 'user' ? 'flex-end' : 'flex-start', background: m.sender === 'user' ? '#E03E1A' : '#FFFFFF', color: m.sender === 'user' ? '#FFFFFF' : '#0C2619', padding: '0.7rem 0.9rem', borderRadius: 12, maxWidth: '85%', fontSize: '0.82rem', border: m.sender === 'bot' ? '1px solid #E6E1D5' : 'none', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                {m.text}
               </div>
             ))}
-            <div ref={messagesEndRef} />
           </div>
 
-          <form onSubmit={handleSend} style={{ display: 'flex', borderTop: '1px solid #E6E1D5', padding: '0.6rem', background: '#FFFFFF' }}>
+          {/* Controls */}
+          <div style={{ padding: '0.8rem', borderTop: '1px solid #E6E1D5', background: 'white', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button 
+              type="button" 
+              onClick={startVoiceInput} 
+              style={{ background: isListening ? '#DC2626' : '#0C2619', color: 'white', border: 'none', padding: '0.6rem', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              title="Speak your problem"
+            >
+              {isListening ? <MicOff size={18} /> : <Mic size={18} />}
+            </button>
             <input 
-              type="text" 
-              placeholder="Ask any question..." 
+              style={{ flex: 1, border: '1px solid #E6E1D5', padding: '0.6rem', borderRadius: 8, fontSize: '0.85rem', outline: 'none' }} 
+              placeholder="Speak or type your issue..." 
               value={input} 
               onChange={e => setInput(e.target.value)}
-              style={{ flex: 1, border: 'none', outline: 'none', padding: '0.5rem 0.8rem', fontSize: '0.85rem' }} 
+              onKeyDown={e => e.key === 'Enter' && handleSend()}
+              disabled={isSubmitting}
             />
-            <button type="submit" style={{ background: '#0C2619', color: 'white', border: 'none', borderRadius: '8px', padding: '0.5rem 0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-              <Send size={15} />
+            <button 
+              onClick={handleSend} 
+              style={{ background: '#E03E1A', color: 'white', border: 'none', padding: '0.6rem', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              disabled={isSubmitting}
+            >
+              <Send size={18} />
             </button>
-          </form>
+          </div>
         </div>
       )}
     </div>

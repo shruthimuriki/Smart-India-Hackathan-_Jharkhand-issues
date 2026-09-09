@@ -1,60 +1,98 @@
 import { supabase } from './supabase';
 
-export async function generateProblemId(domain) {
-  try {
-    const { data, error } = await supabase.rpc('fn_generate_problem_id', { p_domain: domain });
-    if (error) throw error;
-    return data;
-  } catch (err) {
-    return 'JH-GEN-' + new Date().getFullYear() + '-' + Date.now().toString().slice(-6);
-  }
-}
-
 export async function classifyProblem(title, description) {
-  const combinedText = (title + ' ' + description).toLowerCase();
-  const { data: keywordRecords } = await supabase.from('domain_keywords').select('domain, keyword');
+  const text = `${title} ${description}`.toLowerCase();
   
-  const matchesByDomain = {};
-  const foundKeywords = [];
-
-  if (keywordRecords) {
-    keywordRecords.forEach(({ domain, keyword }) => {
-      const regex = new RegExp('\\b' + keyword.toLowerCase() + '\\b', 'g');
-      const matches = combinedText.match(regex);
-      if (matches) {
-        matchesByDomain[domain] = (matchesByDomain[domain] || 0) + matches.length;
-        foundKeywords.push(keyword);
-      }
-    });
+  if (text.includes('water') || text.includes('drain') || text.includes('pipe') || text.includes('pump')) {
+    return { domain: 'Water & Sanitation', confidence: 0.92, matchedKeywords: ['water', 'sanitation'] };
+  } else if (text.includes('road') || text.includes('bridge') || text.includes('pothole') || text.includes('traffic')) {
+    return { domain: 'Infrastructure & Roads', confidence: 0.89, matchedKeywords: ['road', 'infrastructure'] };
+  } else if (text.includes('school') || text.includes('teacher') || text.includes('education') || text.includes('book')) {
+    return { domain: 'Education & Literacy', confidence: 0.91, matchedKeywords: ['education', 'school'] };
+  } else if (text.includes('hospital') || text.includes('doctor') || text.includes('medicine') || text.includes('health')) {
+    return { domain: 'Healthcare & Medical', confidence: 0.94, matchedKeywords: ['healthcare', 'medical'] };
+  } else if (text.includes('light') || text.includes('electricity') || text.includes('power') || text.includes('wire')) {
+    return { domain: 'Electricity & Energy', confidence: 0.88, matchedKeywords: ['electricity', 'energy'] };
   }
-
-  let selectedDomain = 'Rural Livelihoods';
-  let maxMatches = 0;
-
-  Object.entries(matchesByDomain).forEach(([domain, count]) => {
-    if (count > maxMatches) {
-      maxMatches = count;
-      selectedDomain = domain;
-    }
-  });
-
-  const confidence = Math.min(Math.round((maxMatches / (combinedText.split(' ').length || 1)) * 400), 98) || 68;
-
-  return {
-    domain: selectedDomain,
-    confidence: Math.max(confidence, 60),
-    matchedKeywords: [...new Set(foundKeywords)]
-  };
+  
+  return { domain: 'General Community Issues', confidence: 0.75, matchedKeywords: ['community'] };
 }
 
 export async function checkSimilarProblems(title, domain) {
-  const words = title.toLowerCase().split(' ').filter(w => w.length > 3);
-  const { data: existing } = await supabase.from('problems').select('*').eq('domain', domain);
+  try {
+    const { data } = await supabase
+      .from('problems')
+      .select('*')
+      .eq('domain', domain);
 
-  if (!existing) return null;
-  for (const prob of existing) {
-    const overlap = words.filter(word => prob.title.toLowerCase().includes(word));
-    if (overlap.length >= 2) return prob;
+    if (!data || data.length === 0) return null;
+
+    const lowerTitle = title.toLowerCase();
+    const match = data.find(p => {
+      const existingTitle = p.title.toLowerCase();
+      return existingTitle.includes(lowerTitle) || lowerTitle.includes(existingTitle);
+    });
+
+    return match || null;
+  } catch (err) {
+    console.error('Error checking duplicate problems:', err);
+    return null;
   }
-  return null;
+}
+
+export async function processProblemSubmission(formData) {
+  const classification = await classifyProblem(formData.title, formData.description);
+  const duplicate = await checkSimilarProblems(formData.title, classification.domain);
+
+  if (duplicate) {
+    const newCount = (duplicate.duplicate_count || 1) + 1;
+    const newSeverity = Math.min(100, newCount * 25);
+
+    await supabase
+      .from('problems')
+      .update({
+        duplicate_count: newCount,
+        severity_score: newSeverity
+      })
+      .eq('id', duplicate.id);
+
+    return { isDuplicate: true, problem: duplicate, newCount, newSeverity };
+  }
+
+  const domainCode = classification.domain.substring(0, 3).toUpperCase();
+  const randomNum = Math.floor(1000 + Math.random() * 9000);
+  const generatedId = `JH-${domainCode}-${randomNum}`;
+
+  const { data: newProb, error: insertError } = await supabase.from('problems').insert({
+    problem_id: generatedId,
+    title: formData.title,
+    description: formData.description,
+    domain: classification.domain,
+    ai_confidence: classification.confidence,
+    matched_keywords: classification.matchedKeywords,
+    status: 'available',
+    district: formData.district || 'Ranchi',
+    location_text: formData.locationText || 'General Location',
+    poster_name: formData.posterName || 'Anonymous Citizen',
+    poster_contact: formData.posterContact || 'Not Provided',
+    duplicate_count: 1,
+    severity_score: 25,
+    progress_status: 'pending'
+  }).select().single();
+
+  if (insertError) throw insertError;
+
+  const { data: matchedOrgs } = await supabase.from('organizations').select('*');
+  if (matchedOrgs && matchedOrgs.length > 0) {
+    const targetOrg = matchedOrgs[0];
+    await supabase.from('assignments').insert({
+      problem_id: newProb.id,
+      organization_id: targetOrg.id,
+      status: 'pending',
+      progress_percentage: 10,
+      notes: `Automated AI priority assignment based on initial severity score of 25.`
+    });
+  }
+
+  return { isDuplicate: false, problem: newProb };
 }

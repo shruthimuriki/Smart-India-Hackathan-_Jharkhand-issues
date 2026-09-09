@@ -264,3 +264,15 @@ INSERT INTO public.organizations (id, name, type, description, district, domains
 ('22222222-2222-2222-2222-222222222222', 'BIT Mesra Innovation & Incubation Centre', 'University', 'Technical institute focused on urban infrastructure and clean energy solar grids.', 'Ranchi', ARRAY['Education', 'Urban Development', 'Energy', 'Accessibility'], ARRAY['AI/ML', 'Urban Infrastructure', 'Solar Grids']),
 ('33333333-3333-3333-3333-333333333333', 'Jharkhand Rural Technology Council', 'Research Institution', 'State research center developing affordable healthcare tools and environmental sanitation.', 'Dhanbad', ARRAY['Healthcare', 'Environment', 'Public Administration'], ARRAY['E-Governance', 'Public Sanitation', 'Community Health'])
 ON CONFLICT (id) DO NOTHING;
+-- Add severity, duplicates, and progress tracking columns to problems table
+ALTER TABLE public.problems 
+  ADD COLUMN IF NOT EXISTS duplicate_count INT DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS severity_score INT DEFAULT 10,
+  ADD COLUMN IF NOT EXISTS progress_status TEXT DEFAULT 'pending',
+  ADD COLUMN IF NOT EXISTS resolution_notes TEXT DEFAULT '';
+
+-- Update assignments table with progress tracking
+ALTER TABLE public.assignments 
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending',
+  ADD COLUMN IF NOT EXISTS progress_percentage INT DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS last_updated TIMESTAMPTZ DEFAULT NOW();
