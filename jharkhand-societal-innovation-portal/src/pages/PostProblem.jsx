@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { generateProblemId, classifyProblem, checkSimilarProblems } from '../lib/categorization';
@@ -21,13 +21,11 @@ export default function PostProblem() {
   const [error, setError] = useState(null);
   const [similarProb, setSimilarProb] = useState(null);
 
-  // VOICE INPUT STATES
   const [isListening, setIsListening] = useState(false);
-  const [speechLanguage, setSpeechLanguage] = useState('hi-IN'); // Hindi default
-  const [activeVoiceTarget, setActiveVoiceTarget] = useState('description'); // 'title' or 'description'
+  const [speechLanguage, setSpeechLanguage] = useState('hi-IN');
+  const [activeVoiceTarget, setActiveVoiceTarget] = useState('description');
   const [translating, setTranslating] = useState(false);
 
-  // TRANSLATE TEXT TO ENGLISH (Free MyMemory Translation API)
   const translateToEnglish = async (text, sourceLang) => {
     if (!text || sourceLang.startsWith('en')) return text;
     setTranslating(true);
@@ -44,12 +42,10 @@ export default function PostProblem() {
     }
   };
 
-  // SPEECH RECOGNITION HANDLER
   const startSpeechRecognition = (targetField) => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
     if (!SpeechRecognition) {
-      alert('Speech recognition is not supported in this browser. Please use Google Chrome or MS Edge.');
+      alert('Speech recognition is not supported in this browser. Please use Chrome or Edge.');
       return;
     }
 
@@ -59,14 +55,11 @@ export default function PostProblem() {
 
     setActiveVoiceTarget(targetField);
     setIsListening(true);
-
     recognition.start();
 
     recognition.onresult = async (event) => {
       const spokenTranscript = event.results[0][0].transcript;
       setIsListening(false);
-
-      // Convert Hindi/Regional speech into English text
       const translatedEnglishText = await translateToEnglish(spokenTranscript, speechLanguage);
 
       setFormData(prev => ({
@@ -75,19 +68,11 @@ export default function PostProblem() {
       }));
     };
 
-    recognition.onerror = (event) => {
-      console.error('Speech error:', event.error);
-      setIsListening(false);
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
   };
 
-  const handleFileChange = (e) => {
-    setFiles(Array.from(e.target.files));
-  };
+  const handleFileChange = (e) => setFiles(Array.from(e.target.files));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -116,13 +101,12 @@ export default function PostProblem() {
         status: 'available',
         district: formData.district,
         location_text: formData.locationText,
-        poster_name: formData.posterName,
-        poster_contact: formData.posterContact
+        poster_name: formData.posterName.trim() || 'Anonymous Citizen',
+        poster_contact: formData.posterContact.trim() || 'Not Provided'
       }).select().single();
 
       if (insertError) throw insertError;
 
-      // AUTOMATICALLY ASSIGN TO RELEVANT INSTITUTION
       const { data: matchedOrgs } = await supabase.from('organizations').select('*');
       if (matchedOrgs && matchedOrgs.length > 0) {
         const targetOrg = matchedOrgs[0];
@@ -169,10 +153,9 @@ export default function PostProblem() {
       <div className="card">
         <h2>Report a Community Issue</h2>
         <p style={{ color: '#6B675E', fontSize: '0.85rem', marginBottom: '1.2rem' }}>
-          Submit problem details. PALASH will auto-assign the issue to the relevant institution.
+          Submit problem details. Citizens can post anonymously without providing personal contact details.
         </p>
 
-        {/* VOICE INPUT SELECTOR CONTROL */}
         <div style={{ background: '#FAF8F5', border: '1px solid #E6E1D5', borderRadius: 8, padding: '0.8rem 1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', fontWeight: 700, color: '#0C2619' }}>
             <Languages size={18} color="#E03E1A" />
@@ -204,7 +187,6 @@ export default function PostProblem() {
         )}
 
         <form onSubmit={handleSubmit}>
-          {/* PROBLEM TITLE WITH VOICE BUTTON */}
           <div className="form-group">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
               <label style={{ margin: 0 }}>Problem Title *</label>
@@ -222,11 +204,10 @@ export default function PostProblem() {
               required 
               value={formData.title} 
               onChange={e => setFormData({ ...formData, title: e.target.value })} 
-              placeholder="e.g. Broken handpump in village"
+              placeholder="e.g. Broken water pipeline in village"
             />
           </div>
 
-          {/* PROBLEM DESCRIPTION WITH VOICE BUTTON */}
           <div className="form-group">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
               <label style={{ margin: 0 }}>Detailed Description *</label>
@@ -282,19 +263,20 @@ export default function PostProblem() {
             )}
           </div>
 
+          {/* OPTIONAL CITIZEN CONTACT DETAILS */}
           <div className="grid-2">
             <div className="form-group">
-              <label>Your Name *</label>
-              <input className="form-control" required value={formData.posterName} onChange={e => setFormData({ ...formData, posterName: e.target.value })} />
+              <label>Your Name (Optional)</label>
+              <input className="form-control" value={formData.posterName} onChange={e => setFormData({ ...formData, posterName: e.target.value })} placeholder="Anonymous Citizen" />
             </div>
             <div className="form-group">
-              <label>Contact Phone/Email *</label>
-              <input className="form-control" required value={formData.posterContact} onChange={e => setFormData({ ...formData, posterContact: e.target.value })} />
+              <label>Contact Phone/Email (Optional)</label>
+              <input className="form-control" value={formData.posterContact} onChange={e => setFormData({ ...formData, posterContact: e.target.value })} placeholder="Not Provided" />
             </div>
           </div>
 
           <button type="submit" className="btn btn-orange" style={{ width: '100%', justifyContent: 'center', marginTop: '1rem' }} disabled={loading || translating}>
-            {loading ? 'Submitting...' : 'SUBMIT PROBLEM'}
+            {loading ? 'Submitting...' : 'SUBMIT PROBLEM (ANONYMOUS)'}
           </button>
         </form>
       </div>
