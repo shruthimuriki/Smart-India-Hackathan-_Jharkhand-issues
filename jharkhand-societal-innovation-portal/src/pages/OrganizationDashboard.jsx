@@ -6,6 +6,7 @@ export default function OrganizationDashboard() {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null);
+  const [actionMessage, setActionMessage] = useState(null);
 
   // Collaboration State
   const [selectedProbForCollab, setSelectedProbForCollab] = useState(null);
@@ -19,49 +20,93 @@ export default function OrganizationDashboard() {
 
   const fetchAssignedProblems = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('assignments')
-      .select('*, problem:problems(*)');
-    setAssignments(data || []);
-    setLoading(false);
+    try {
+      const { data, error } = await supabase
+        .from('assignments')
+        .select('*, problem:problems(*)');
+
+      if (error) throw error;
+      setAssignments(data || []);
+    } catch (err) {
+      console.error('Error fetching assignments:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleStatusUpdate = async (assignmentId, problemId, newStatus, newPercentage) => {
     setUpdatingId(assignmentId);
-    
-    await supabase
-      .from('assignments')
-      .update({ status: newStatus, progress_percentage: newPercentage, last_updated: new Date() })
-      .eq('id', assignmentId);
+    setActionMessage(null);
 
-    await supabase
-      .from('problems')
-      .update({ status: 'assigned', progress_status: newStatus })
-      .eq('id', problemId);
+    try {
+      // 1. Update assignment record
+      const { error: assignErr } = await supabase
+        .from('assignments')
+        .update({ 
+          status: newStatus, 
+          progress_percentage: newPercentage, 
+          last_updated: new Date().toISOString() 
+        })
+        .eq('id', assignmentId);
 
-    await fetchAssignedProblems();
-    setUpdatingId(null);
+      if (assignErr) throw assignErr;
+
+      // 2. Sync with parent problem status if problemId exists
+      if (problemId) {
+        await supabase
+          .from('problems')
+          .update({ 
+            status: 'assigned', 
+            progress_status: newStatus 
+          })
+          .eq('id', problemId);
+      }
+
+      // Optimistic state update so the UI responds immediately
+      setAssignments(prev =>
+        prev.map(item =>
+          item.id === assignmentId
+            ? { ...item, status: newStatus, progress_percentage: newPercentage }
+            : item
+        )
+      );
+
+      setActionMessage('Execution state updated successfully!');
+      setTimeout(() => setActionMessage(null), 3000);
+    } catch (err) {
+      console.error('Failed to update execution status:', err);
+      alert('Failed to update execution state. Please verify your Supabase database connections.');
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
   const handleSendCollaborationRequest = async (e) => {
     e.preventDefault();
     if (!selectedProbForCollab || !collabTargetOrg) return;
 
-    await supabase.from('collaborations').insert({
-      problem_id: selectedProbForCollab.problem.id,
-      requesting_org_id: selectedProbForCollab.organization_id,
-      target_org_name: collabTargetOrg,
-      notes: collabNotes,
-      status: 'pending'
-    });
+    try {
+      const { error } = await supabase.from('collaborations').insert({
+        problem_id: selectedProbForCollab.problem?.id || selectedProbForCollab.problem_id,
+        requesting_org_id: selectedProbForCollab.organization_id || null,
+        target_org_name: collabTargetOrg,
+        notes: collabNotes,
+        status: 'pending'
+      });
 
-    setCollabSuccess(true);
-    setTimeout(() => {
-      setCollabSuccess(false);
-      setSelectedProbForCollab(null);
-      setCollabTargetOrg('');
-      setCollabNotes('');
-    }, 1800);
+      if (error) throw error;
+
+      setCollabSuccess(true);
+      setTimeout(() => {
+        setCollabSuccess(false);
+        setSelectedProbForCollab(null);
+        setCollabTargetOrg('');
+        setCollabNotes('');
+      }, 1800);
+    } catch (err) {
+      console.error('Collaboration request failed:', err);
+      alert('Could not submit collaboration request. Ensure the collaborations table exists in Supabase.');
+    }
   };
 
   return (
@@ -78,12 +123,18 @@ export default function OrganizationDashboard() {
         </button>
       </div>
 
+      {actionMessage && (
+        <div className="alert alert-success" style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <CheckCircle2 size={18} /> {actionMessage}
+        </div>
+      )}
+
       {loading ? (
         <p>Loading assigned tasks...</p>
       ) : assignments.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
           <Building2 size={40} color="#6B675E" />
-          <p style={{ marginTop: '1rem' }}>No problems assigned yet.</p>
+          <p style={{ marginTop: '1rem' }}>No problems currently assigned.</p>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
@@ -102,8 +153,8 @@ export default function OrganizationDashboard() {
                     <span className="badge badge-progress" style={{ marginLeft: '0.5rem', background: '#2563EB', color: 'white' }}>
                       ASSIGNED
                     </span>
-                    <h3 style={{ marginTop: '0.4rem', marginBottom: '0.2rem' }}>{prob.title}</h3>
-                    <p style={{ fontSize: '0.85rem', color: '#6B675E' }}>{prob.district} • {prob.domain}</p>
+                    <h3 style={{ marginTop: '0.4rem', marginBottom: '0.2rem' }}>{prob.title || 'Untitled Community Issue'}</h3>
+                    <p style={{ fontSize: '0.85rem', color: '#6B675E' }}>{prob.district || 'General'} • {prob.domain || 'General'}</p>
                   </div>
 
                   <div style={{ textAlign: 'right' }}>
@@ -118,7 +169,7 @@ export default function OrganizationDashboard() {
                 </div>
 
                 <p style={{ fontSize: '0.9rem', marginBottom: '1.2rem', background: '#FAF8F5', padding: '0.8rem', borderRadius: 8 }}>
-                  {prob.description}
+                  {prob.description || 'No detailed description provided.'}
                 </p>
 
                 {/* CONTROLS & COLLABORATION BUTTON */}
@@ -144,7 +195,7 @@ export default function OrganizationDashboard() {
                       className="btn" 
                       style={{ background: '#0C2619', color: 'white', fontSize: '0.8rem' }}
                     >
-                      In Progress (50%)
+                      {updatingId === item.id ? 'Updating...' : 'In Progress (50%)'}
                     </button>
                     <button 
                       onClick={() => handleStatusUpdate(item.id, prob.id, 'resolved', 100)} 
@@ -152,7 +203,7 @@ export default function OrganizationDashboard() {
                       className="btn btn-orange" 
                       style={{ fontSize: '0.8rem' }}
                     >
-                      Resolved (100%)
+                      {updatingId === item.id ? 'Updating...' : 'Resolved (100%)'}
                     </button>
                   </div>
                 </div>
@@ -172,9 +223,9 @@ export default function OrganizationDashboard() {
               <Users size={20} /> Request Institutional Collaboration
             </div>
 
-            <h3 style={{ marginBottom: '0.3rem' }}>{selectedProbForCollab.problem.title}</h3>
+            <h3 style={{ marginBottom: '0.3rem' }}>{selectedProbForCollab.problem?.title || 'Selected Community Issue'}</h3>
             <p style={{ color: '#6B675E', fontSize: '0.82rem', marginBottom: '1.2rem' }}>
-              Problem ID: <strong>{selectedProbForCollab.problem.problem_id}</strong>
+              Problem ID: <strong>{selectedProbForCollab.problem?.problem_id || 'N/A'}</strong>
             </p>
 
             {collabSuccess ? (
